@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.11.0 - 2026-06-07
+
+- Compared values are always shown in assertion error messages.
+
+## v1.10.0 - 2026-04-07
+
 ## v1.9.0 - 2025-11-06
 
 - Updated for `gleam_stdlib` v1.0.0.
