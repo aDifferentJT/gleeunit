@@ -42,3 +42,22 @@ allow_read = [
   "build",
 ]
 ```
+
+### Timeouts
+
+On the JavaScript backend each test has a timeout. A test that does not settle
+within the timeout is reported as a failure rather than hanging the whole run.
+
+The default timeout is 5000 milliseconds. Override it with the
+`GLEEUNIT_TIMEOUT` environment variable, in milliseconds:
+
+```sh
+GLEEUNIT_TIMEOUT=20000 gleam test --target javascript
+```
+
+A missing, zero, negative, or non-numeric value falls back to the default.
+
+The timeout only interrupts *asynchronous* work — an unsettled promise, a long
+`await`, a pending timer. A *synchronous* infinite loop never yields control
+back to the JavaScript runtime, so it cannot be interrupted and the run will
+still hang. (On the Erlang backend EUnit applies its own per-test timeout.)

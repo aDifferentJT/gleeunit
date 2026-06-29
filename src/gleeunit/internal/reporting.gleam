@@ -204,6 +204,22 @@ pub fn test_skipped(state: State, module: String, function: String) -> State {
   State(..state, skipped: state.skipped + 1)
 }
 
+pub fn test_timed_out(
+  state: State,
+  module: String,
+  function: String,
+  timeout: Int,
+) -> State {
+  let message =
+    grey(module <> "." <> function)
+    <> bold(red(" timed out"))
+    <> " after "
+    <> int.to_string(timeout)
+    <> "ms"
+  io.print("\n" <> message)
+  State(..state, failed: state.failed + 1)
+}
+
 fn bold(text: String) -> String {
   "\u{001b}[1m" <> text <> "\u{001b}[22m"
 }

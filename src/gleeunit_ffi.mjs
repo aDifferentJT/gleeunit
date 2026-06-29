@@ -36,6 +36,7 @@ async function readRootPackageName() {
 
 export async function main() {
   let state = reporting.new_state();
+  let timeout = parseTimeout(readTimeoutEnv(), DEFAULT_TIMEOUT);
 
   let packageName = await readRootPackageName();
   let dist = `../${packageName}/`;
@@ -46,11 +47,15 @@ export async function main() {
     for (let fnName of Object.keys(module)) {
       if (!fnName.endsWith("_test")) continue;
       try {
-        await module[fnName]();
+        await runWithTimeout(() => module[fnName](), timeout);
         state = reporting.test_passed(state);
       } catch (error) {
         let moduleName = js_path.slice(0, -4);
-        state = reporting.test_failed(state, moduleName, fnName, error);
+        if (isTimeout(error)) {
+          state = reporting.test_timed_out(state, moduleName, fnName, timeout);
+        } else {
+          state = reporting.test_failed(state, moduleName, fnName, error);
+        }
       }
     }
   }
@@ -61,6 +66,61 @@ export async function main() {
 
 export function crash(message) {
   throw new Error(message);
+}
+
+// Timeout sentinel — a unique object so `isTimeout` can identify it.
+const TIMEOUT_SENTINEL = Object.freeze({ __gleeunit_timeout__: true });
+
+/** Returns true if `error` is the timeout sentinel thrown by `runWithTimeout`. */
+export function isTimeout(error) {
+  return error === TIMEOUT_SENTINEL;
+}
+
+const DEFAULT_TIMEOUT = 5000;
+
+function readTimeoutEnv() {
+  try {
+    if (globalThis.Deno) return Deno.env.get("GLEEUNIT_TIMEOUT");
+    return process.env.GLEEUNIT_TIMEOUT;
+  } catch {
+    // Deno without --allow-env throws; fall back to the default.
+    return undefined;
+  }
+}
+
+/**
+ * Parse a timeout value from `raw` (typically an env-var string).
+ * Returns `def` when `raw` is absent, non-numeric, zero, or negative.
+ * Fractional values are floored, and the result is clamped to the largest
+ * delay `setTimeout` supports (values above this overflow to ~1ms).
+ */
+export function parseTimeout(raw, def) {
+  if (raw == null) return def;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return def;
+  return Math.min(Math.floor(n), 2_147_483_647);
+}
+
+/**
+ * Run `fn()` and resolve with its result, or throw the timeout sentinel if
+ * it takes longer than `ms` milliseconds.
+ */
+export function runWithTimeout(fn, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(TIMEOUT_SENTINEL), ms);
+    Promise.resolve()
+      .then(() => fn())
+      .then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      );
+  });
 }
 
 function exit(code) {
