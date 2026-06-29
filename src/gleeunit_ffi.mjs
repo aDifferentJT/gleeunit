@@ -61,7 +61,7 @@ export async function main() {
   }
 
   const status = reporting.finished(state);
-  exit(status);
+  await exit(status);
 }
 
 export function crash(message) {
@@ -123,10 +123,22 @@ export function runWithTimeout(fn, ms) {
   });
 }
 
-function exit(code) {
+async function exit(code) {
+  // A timed-out test can leave async work pending that keeps the runtime
+  // alive, so we terminate the process explicitly. Exit synchronously without
+  // yielding to the event loop: a hung test's lingering timers must not get
+  // another tick to write over the final report. (Deno's stdout writes are
+  // synchronous, so nothing is buffered by the time we get here.)
   if (globalThis.Deno) {
     Deno.exit(code);
   } else {
+    // On Node, stdout to a pipe is buffered and `process.exit` would truncate
+    // it, so wait for it to drain first. A TTY drains synchronously, so this
+    // resolves on a microtask without letting any timer fire.
+    await new Promise((resolve) => {
+      if (process.stdout.writableLength === 0) resolve();
+      else process.stdout.once("drain", resolve);
+    });
     process.exit(code);
   }
 }

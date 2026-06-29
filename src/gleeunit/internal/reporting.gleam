@@ -9,16 +9,17 @@ import gleam/string
 import gleeunit/internal/gleam_panic.{type GleamPanic}
 
 pub type State {
-  State(passed: Int, failed: Int, skipped: Int)
+  State(passed: Int, failed: Int, skipped: Int, failures: List(String))
 }
 
 pub fn new_state() -> State {
-  State(passed: 0, failed: 0, skipped: 0)
+  State(passed: 0, failed: 0, skipped: 0, failures: [])
 }
 
 pub fn finished(state: State) -> Int {
+  print_failures(state.failures)
   case state {
-    State(passed: 0, failed: 0, skipped: 0) -> {
+    State(passed: 0, failed: 0, skipped: 0, ..) -> {
       io.println("\nNo tests found!")
       1
     }
@@ -63,6 +64,18 @@ pub fn finished(state: State) -> Int {
   }
 }
 
+// Failure details are accumulated during the run and printed here, in one
+// synchronous burst right before the run ends. A test that times out can leave
+// async work running that keeps writing to the terminal (e.g. a spinner that
+// emits cursor-movement escapes); printing details inline lets that output
+// erase them. Emitting everything at the end, just before a synchronous exit,
+// keeps the report intact.
+fn print_failures(failures: List(String)) -> Nil {
+  failures
+  |> list.reverse
+  |> list.each(fn(message) { io.print("\n" <> message) })
+}
+
 pub fn test_passed(state: State) -> State {
   io.print(green("."))
   State(..state, passed: state.passed + 1)
@@ -82,8 +95,8 @@ pub fn test_failed(
     Error(_) -> format_unknown(module, function, error)
   }
 
-  io.print("\n" <> message)
-  State(..state, failed: state.failed + 1)
+  io.print(red("F"))
+  State(..state, failed: state.failed + 1, failures: [message, ..state.failures])
 }
 
 pub fn eunit_missing() -> Result(never, Nil) {
@@ -216,8 +229,8 @@ pub fn test_timed_out(
     <> " after "
     <> int.to_string(timeout)
     <> "ms"
-  io.print("\n" <> message)
-  State(..state, failed: state.failed + 1)
+  io.print(red("F"))
+  State(..state, failed: state.failed + 1, failures: [message, ..state.failures])
 }
 
 fn bold(text: String) -> String {
